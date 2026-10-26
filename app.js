@@ -11,7 +11,7 @@
 (function () {
   'use strict';
 
-  const APP_VERSION = '1.1.0';
+  const APP_VERSION = '1.3.0';
   const STORAGE_KEY = 'worldclock.v1';
 
   // Used if team-defaults.json can't be loaded (e.g. opening the file directly).
@@ -42,7 +42,8 @@
         tz: z.tz,
         label: String(z.label || labelFromZone(z.tz)).slice(0, 60),          // your name for the row
         city: String(z.city || z.label || labelFromZone(z.tz)).slice(0, 60),  // the place it was added as
-        notes: typeof z.notes === 'string' ? z.notes.slice(0, 2000) : ''      // shown in the ⓘ hover card
+        notes: typeof z.notes === 'string' ? z.notes.slice(0, 2000) : '',     // shown in the ⓘ hover card
+        selected: z.selected === true                                       // ticked for copying
       }));
     let homeId = raw && typeof raw.homeId === 'string' && zones.some((z) => z.id === raw.homeId) ? raw.homeId : null;
     if (!homeId && zones.length) {
@@ -59,11 +60,30 @@
       settings: {
         hour12: s.hour12 !== false,
         workStart: hour(s.workStart, 8),
-        workEnd: hour(s.workEnd, 18)
+        workEnd: hour(s.workEnd, 18),
+        // Copy format (see the Copy section below). Your meeting link lives
+        // here — in this browser's storage, never in the code on GitHub.
+        copyEach: typeof s.copyEach === 'string' ? s.copyEach.slice(0, 300) : DEFAULT_COPY.copyEach,
+        copyJoin: typeof s.copyJoin === 'string' ? s.copyJoin.slice(0, 20) : DEFAULT_COPY.copyJoin,
+        copyMessage: typeof s.copyMessage === 'string' ? s.copyMessage.slice(0, 2000) : DEFAULT_COPY.copyMessage,
+        meetingLink: typeof s.meetingLink === 'string' ? s.meetingLink.trim().slice(0, 500) : '',
+        // Appearance
+        theme: (window.THEMES || []).some((t) => t.id === s.theme) ? s.theme : 'classic',
+        custom: cleanCustom(s.custom),
+        subtitle: typeof s.subtitle === 'string' ? s.subtitle.slice(0, 60) : 'Smart Glazier · Sales'
       },
       // Reserved for the copy-template feature later. Kept as-is on import/export.
       templates: Array.isArray(raw && raw.templates) ? raw.templates : []
     };
+  }
+
+  // Only keep the four picker colours, and only if they're real #rrggbb values.
+  function cleanCustom(c) {
+    const out = {};
+    if (c && typeof c === 'object') {
+      for (const k of ['accent', 'header', 'page', 'card']) if (/^#[0-9a-f]{6}$/i.test(c[k] || '')) out[k] = c[k].toLowerCase();
+    }
+    return out;
   }
 
   function save() {
@@ -130,6 +150,7 @@
     list.textContent = '';
     for (const z of data.zones) list.appendChild(buildRow(z));
     $('empty').hidden = data.zones.length > 0;
+    updateCopyControls();
     refresh();
   }
 
@@ -188,7 +209,15 @@
     rm.addEventListener('click', () => removeZone(z.id));
     actions.append(rm);
 
-    li.append(handle, main, actions);
+    const pick = document.createElement('input');
+    pick.type = 'checkbox';
+    pick.className = 'pick';
+    pick.checked = z.selected;
+    pick.setAttribute('aria-label', 'Include ' + z.city + ' when copying');
+    pick.title = 'Include when copying';
+    pick.addEventListener('change', () => { z.selected = pick.checked; save(); updateCopyControls(); });
+
+    li.append(pick, handle, main, actions);
 
     timeBtn.addEventListener('click', () => startEditing(z.id));
     name.addEventListener('dblclick', () => openEditor(z.id));
@@ -233,8 +262,8 @@
       // Date, flagged when it's a different day from home
       const diff = TZ.dayDifference(ms, z.tz, home.tz);
       const dateEl = li.querySelector('.zone-date');
-      dateEl.textContent = TZ.formatDate(ms, z.tz) + (diff ? ' · ' + (diff > 0 ? '+' : '−') + Math.abs(diff) + ' day' : '');
-      dateEl.classList.toggle('shifted', diff !== 0);
+      dateEl.textContent = TZ.formatDate(ms, z.tz);
+      if (diff) dateEl.append(' · ', el('span', 'day-tag', (diff > 0 ? '+' : '−') + Math.abs(diff) + ' day'));
 
       // Zone name, gap to home, and any upcoming clock change
       const abbr = TZ.abbreviation(ms, z.tz);
@@ -353,27 +382,183 @@
 
   /* ---------- Copy ---------- */
 
-  // Uses the place name, not your label, so it's safe to paste to clients.
-  // e.g. "Tue 27 Oct: 9:00am CDT Chicago · 10:00am EDT New York · 3:00am NZDT Auckland (Wed 28 Oct)"
-  function summaryLine() {
-    const ms = shownMs();
-    if (!data.zones.length) return '';
-    const firstDate = TZ.formatDate(ms, data.zones[0].tz);
-    const parts = data.zones.map((z) => {
-      const d = TZ.formatDate(ms, z.tz);
-      return TZ.formatTime(ms, z.tz, data.settings.hour12) + ' ' + TZ.abbreviation(ms, z.tz) + ' ' + z.city + (d !== firstDate ? ' (' + d + ')' : '');
-    });
-    return firstDate + ': ' + parts.join(' · ');
+  /*
+    Copying works in two layers, both editable in ⚙:
+      Each time  e.g. "{abbr} {weekday} {dayth} {time}"  -> "NZDT Tue 27th 11am"
+                 (one per ticked row, joined with "Join with", e.g. " / ")
+      Message    e.g. "{times}\nJoin here: {meetingLink}"
+                 (wraps the whole thing; {times} is the joined list)
+    Only place names are offered as tokens, never your labels, so internal
+    notes can't end up in a client email.
+  */
+  const DEFAULT_COPY = { copyEach: '{abbr} {weekday} {dayth} {time}', copyJoin: ' / ', copyMessage: '{times}' };
+
+  function ordinal(n) {
+    const t = n % 100;
+    if (t >= 11 && t <= 13) return n + 'th';
+    return n + ({ 1: 'st', 2: 'nd', 3: 'rd' }[n % 10] || 'th');
   }
 
-  async function copySummary() {
-    const text = summaryLine();
-    if (!text) return;
-    try { await navigator.clipboard.writeText(text); toast('Copied: ' + text); }
+  // "4pm", "4:30pm" (or "16:00" when the app is in 24h mode)
+  function compactTime(ms, tz) {
+    if (!data.settings.hour12) return TZ.formatTime(ms, tz, false);
+    return TZ.formatTime(ms, tz, true).replace(':00', '');
+  }
+
+  function tokensFor(ms, z) {
+    const w = TZ.wallParts(ms, z.tz);
+    return {
+      abbr: TZ.abbreviation(ms, z.tz),
+      city: z.city,
+      weekday: w.weekday,
+      day: String(w.day),
+      dayth: ordinal(w.day),
+      month: TZ.formatDate(ms, z.tz).split(' ')[2],
+      time: compactTime(ms, z.tz),
+      time24: TZ.formatTime(ms, z.tz, false)
+    };
+  }
+
+  // Swap {name} for its value; unknown names are left as typed so typos are visible.
+  function fillTokens(text, values) {
+    return String(text).replace(/\{(\w+)\}/g, (m, k) => (Object.prototype.hasOwnProperty.call(values, k) ? values[k] : m));
+  }
+
+  function selectedZones() { return data.zones.filter((z) => z.selected); }
+
+  function buildCopyText(zones, ms) {
+    const s = data.settings;
+    const times = zones.map((z) => fillTokens(s.copyEach, tokensFor(ms, z))).join(s.copyJoin);
+    return fillTokens(s.copyMessage, { times, meetingLink: s.meetingLink }).trim();
+  }
+
+  async function copySelected() {
+    const zones = selectedZones();
+    if (!zones.length) { toast('Tick the times you want to copy first'); return; }
+    const text = buildCopyText(zones, shownMs());
+    try { await navigator.clipboard.writeText(text); }
     catch (e) {
       const ta = document.createElement('textarea'); ta.value = text; document.body.append(ta);
-      ta.select(); document.execCommand('copy'); ta.remove(); toast('Copied');
+      ta.select(); document.execCommand('copy'); ta.remove();
     }
+    const needsLink = /\{meetingLink\}/.test(data.settings.copyMessage) && !data.settings.meetingLink;
+    toast(needsLink ? 'Copied — but your meeting link is empty (set it in ⚙)' : 'Copied: ' + text.split('\n')[0]);
+  }
+
+  function updateCopyControls() {
+    const n = selectedZones().length;
+    const btn = $('copy');
+    btn.textContent = n === 1 ? 'Copy 1 time' : 'Copy ' + n + ' times';
+    btn.setAttribute('aria-disabled', n ? 'false' : 'true');
+    btn.title = n ? '' : 'Tick the rows you want to copy';
+    const all = data.zones.length > 0 && n === data.zones.length;
+    $('select-all').textContent = all ? 'Select none' : 'Select all';
+  }
+
+  function updateCopyPreview() {
+    const zones = selectedZones().length ? selectedZones() : data.zones.slice(0, 2);
+    $('copy-preview').textContent = zones.length ? buildCopyText(zones, shownMs()) : '(add a city to see a preview)';
+  }
+
+  /* ---------- Appearance (themes + colour pickers) ---------- */
+
+  // Small colour helpers. Colours are "#rrggbb"; mix(a, b, 0.25) is 25% of the way from a to b.
+  function rgb(hex) { const n = parseInt(hex.slice(1), 16); return [n >> 16, (n >> 8) & 255, n & 255]; }
+  function hex(r, g, b) { return '#' + [r, g, b].map((v) => Math.round(v).toString(16).padStart(2, '0')).join(''); }
+  function mix(a, b, t) { const x = rgb(a), y = rgb(b); return hex(x[0] + (y[0] - x[0]) * t, x[1] + (y[1] - x[1]) * t, x[2] + (y[2] - x[2]) * t); }
+  function luminance(h) {
+    return rgb(h).map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); })
+      .reduce((sum, v, i) => sum + v * [0.2126, 0.7152, 0.0722][i], 0);
+  }
+  // Black or white text, whichever is easier to read on this background.
+  function readableOn(h) { return luminance(h) > 0.4 ? '#141414' : '#ffffff'; }
+  const isHex = (v) => /^#[0-9a-f]{6}$/i.test(v);
+
+  const THEME_KEYS = Object.keys((window.THEMES || [])[0] ? window.THEMES[0].vars : {});
+
+  function currentTheme() { return window.THEMES.find((t) => t.id === data.settings.theme) || window.THEMES[0]; }
+
+  /*
+    Start from the preset, then let each picked colour override its part
+    and work out the colours that depend on it — so 4 pickers can
+    restyle ~20 colours without ever producing unreadable text.
+  */
+  function themeVars() {
+    const t = currentTheme();
+    const c = data.settings.custom;
+    const v = Object.assign({}, t.vars);
+    let scheme = t.scheme;
+
+    if (c.card) {
+      const dark = luminance(c.card) < 0.25;
+      const ink = dark ? '#f4f4f2' : '#1c1c1e';
+      Object.assign(v, {
+        bg: c.card, ink, 'time-ink': ink, 'row-bg': 'transparent',
+        surface: mix(c.card, '#ffffff', dark ? 0.07 : 0.6),
+        chrome: mix(c.card, ink, 0.05), line: mix(c.card, ink, 0.13), 'card-border': mix(c.card, ink, 0.1),
+        muted: mix(ink, c.card, 0.32), faint: mix(ink, c.card, 0.45), track: mix(c.card, ink, 0.1),
+        flag: mix(ink, c.card, 0.15), warn: dark ? '#fbbf24' : '#b45309'
+      });
+      scheme = dark ? 'dark' : 'light';
+    }
+    const cardSolid = c.card || t.swatch.card;
+    if (c.accent || c.card) {
+      const a = c.accent || t.swatch.accent;
+      Object.assign(v, {
+        accent: a, 'accent-ink': readableOn(a),
+        'accent-soft': mix(cardSolid, a, 0.14), 'accent-line': mix(cardSolid, a, 0.35),
+        work: mix(cardSolid, a, 0.4)
+      });
+      if (!c.header) v['header-mark'] = a;
+    }
+    if (c.header) Object.assign(v, { 'header-bg': c.header, 'header-ink': readableOn(c.header), 'header-mark': c.accent || t.swatch.accent });
+    if (c.page) v['page-bg'] = c.page;
+    return { vars: v, scheme };
+  }
+
+  function applyTheme() {
+    const root = document.documentElement;
+    const t = currentTheme();
+    const custom = Object.keys(data.settings.custom).length > 0;
+    root.dataset.theme = t.id;
+    root.toggleAttribute('data-custom', custom);
+    const { vars, scheme } = themeVars();
+    if (t.id === 'classic' && !custom) {
+      // Leave Classic to styles.css so it can follow Windows dark mode.
+      THEME_KEYS.forEach((k) => root.style.removeProperty('--' + k));
+      root.style.removeProperty('color-scheme');
+    } else {
+      for (const k of THEME_KEYS) root.style.setProperty('--' + k, vars[k]);
+      root.style.colorScheme = scheme;
+    }
+    // Colours the installed app's title bar to match the header.
+    const bar = data.settings.custom.header || t.swatch.header;
+    document.querySelector('meta[name="theme-color"]').setAttribute('content', bar);
+    $('brand-sub').textContent = data.settings.subtitle;
+  }
+
+  function buildThemeGrid() {
+    const grid = $('theme-grid');
+    grid.textContent = '';
+    for (const t of window.THEMES) {
+      const b = el('button', 'theme-btn'); b.type = 'button';
+      b.setAttribute('aria-pressed', String(t.id === data.settings.theme));
+      const chip = el('span', 'theme-chip'); chip.setAttribute('aria-hidden', 'true');
+      for (const k of ['header', 'accent', 'card']) { const s = el('span'); s.style.background = t.swatch[k]; chip.append(s); }
+      b.append(chip, el('span', null, t.name));
+      b.addEventListener('click', () => {
+        data.settings.theme = t.id; data.settings.custom = {};
+        save(); applyTheme(); buildThemeGrid(); fillPickers();
+      });
+      grid.append(b);
+    }
+  }
+
+  function fillPickers() {
+    const t = currentTheme();
+    for (const k of ['accent', 'header', 'page', 'card']) $('pick-' + k).value = data.settings.custom[k] || t.swatch[k];
+    $('reset-colours').disabled = !Object.keys(data.settings.custom).length;
+    $('subtitle').value = data.settings.subtitle;
   }
 
   /* ---------- Changing the list ---------- */
@@ -572,9 +757,26 @@
       const incoming = normalise(JSON.parse(await file.text()));
       if (!incoming.zones.length) throw new Error('no zones');
       if (!confirm('Replace your current ' + data.zones.length + ' cities with ' + incoming.zones.length + ' from this file?')) return;
-      data = incoming; save(); fillHourSelects(); updateHourToggle(); buildList();
+      data = incoming; save(); applyTheme(); buildThemeGrid(); fillPickers(); fillHourSelects(); updateHourToggle(); buildList();
       toast('Imported ' + incoming.zones.length + ' cities');
     } catch (e) { toast('That file isn’t a World Clock backup'); }
+  }
+
+  function fillCopyFields() {
+    $('copy-each').value = data.settings.copyEach;
+    $('copy-join').value = data.settings.copyJoin;
+    $('copy-message').value = data.settings.copyMessage;
+    $('meeting-link').value = data.settings.meetingLink;
+  }
+
+  // Clicking a token chip inserts it into whichever copy field you last used.
+  let lastCopyField = 'copy-each';
+  function insertToken(token) {
+    const f = $(lastCopyField);
+    const a = f.selectionStart ?? f.value.length, b = f.selectionEnd ?? f.value.length;
+    f.value = f.value.slice(0, a) + token + f.value.slice(b);
+    f.focus(); f.setSelectionRange(a + token.length, a + token.length);
+    f.dispatchEvent(new Event('input'));
   }
 
   function updateHourToggle() {
@@ -586,6 +788,7 @@
   async function init() {
     data = loadSaved() || await loadTeamDefaults();
     save();
+    applyTheme();
     updateHourToggle();
     buildList();
     $('version').textContent = 'World Clock ' + APP_VERSION;
@@ -593,7 +796,20 @@
     $('back-to-now').addEventListener('click', backToNow);
     $('day-back').addEventListener('click', () => shiftDay(-1));
     $('day-fwd').addEventListener('click', () => shiftDay(1));
-    $('copy').addEventListener('click', copySummary);
+    $('copy').addEventListener('click', copySelected);
+    $('select-all').addEventListener('click', () => {
+      const all = data.zones.every((z) => z.selected);
+      data.zones.forEach((z) => { z.selected = !all; });
+      save(); buildList();
+    });
+    // Copy-format fields save as you type and update the preview.
+    for (const [id, key] of [['copy-each', 'copyEach'], ['copy-join', 'copyJoin'], ['copy-message', 'copyMessage'], ['meeting-link', 'meetingLink']]) {
+      $(id).addEventListener('input', (e) => { data.settings[key] = key === 'meetingLink' ? e.target.value.trim() : e.target.value; save(); updateCopyPreview(); });
+    }
+    $('copy-reset').addEventListener('click', () => {
+      Object.assign(data.settings, DEFAULT_COPY); save(); fillCopyFields(); updateCopyPreview();
+    });
+    document.querySelectorAll('.token').forEach((b) => b.addEventListener('click', () => insertToken(b.dataset.token)));
     $('toggle-hour').addEventListener('click', () => {
       data.settings.hour12 = !data.settings.hour12; save(); updateHourToggle(); refresh();
     });
@@ -621,9 +837,19 @@
     $('edit-cancel').addEventListener('click', () => $('edit-dialog').close());
     $('edit-notes').addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveEditor(); } });
     document.addEventListener('click', () => hideInfo(true));
+    ['copy-each', 'copy-message'].forEach((id) => $(id).addEventListener('focus', () => { lastCopyField = id; }));
     window.addEventListener('scroll', () => hideInfo(true), true);
 
-    $('open-settings').addEventListener('click', () => { fillHourSelects(); $('settings-dialog').showModal(); });
+    $('open-settings').addEventListener('click', () => { fillHourSelects(); fillCopyFields(); updateCopyPreview(); buildThemeGrid(); fillPickers(); $('settings-dialog').showModal(); });
+    for (const k of ['accent', 'header', 'page', 'card']) {
+      // 'input' fires while dragging in the picker, so the app recolours live.
+      $('pick-' + k).addEventListener('input', (e) => {
+        if (!isHex(e.target.value)) return;
+        data.settings.custom[k] = e.target.value.toLowerCase(); save(); applyTheme(); $('reset-colours').disabled = false;
+      });
+    }
+    $('reset-colours').addEventListener('click', () => { data.settings.custom = {}; save(); applyTheme(); fillPickers(); });
+    $('subtitle').addEventListener('input', (e) => { data.settings.subtitle = e.target.value.slice(0, 60); save(); applyTheme(); });
     $('work-start').addEventListener('change', (e) => { data.settings.workStart = +e.target.value; save(); refresh(); });
     $('work-end').addEventListener('change', (e) => { data.settings.workEnd = +e.target.value; save(); refresh(); });
     $('export').addEventListener('click', exportData);
@@ -631,7 +857,7 @@
     $('import-file').addEventListener('change', (e) => { if (e.target.files[0]) importData(e.target.files[0]); e.target.value = ''; });
     $('reset').addEventListener('click', async () => {
       if (!confirm('Replace your list and settings with the team defaults?')) return;
-      data = await loadTeamDefaults(); save(); fillHourSelects(); updateHourToggle(); backToNow(); buildList();
+      data = await loadTeamDefaults(); save(); applyTheme(); buildThemeGrid(); fillPickers(); fillHourSelects(); updateHourToggle(); backToNow(); buildList();
       toast('Reset to team defaults');
     });
 

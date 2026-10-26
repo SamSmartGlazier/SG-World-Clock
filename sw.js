@@ -6,9 +6,9 @@
   When you change any file, bump CACHE_VERSION (e.g. v2) so everyone's
   copy refreshes. Each open checks for updates in the background.
 */
-const CACHE_VERSION = 'wc-v2';
+const CACHE_VERSION = 'wc-v4';
 const FILES = [
-  './', 'index.html', 'styles.css', 'tz.js', 'cities.js', 'app.js',
+  './', 'index.html', 'styles.css', 'tz.js', 'themes.js', 'cities.js', 'app.js',
   'team-defaults.json', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png'
 ];

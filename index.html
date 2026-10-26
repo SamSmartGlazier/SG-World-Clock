@@ -13,6 +13,16 @@
 <body>
   <main class="app">
 
+    <header class="brand-bar">
+      <span class="brand-title">
+        <span class="brand-mark" aria-hidden="true">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+        </span>
+        <span class="brand-name">World Clock</span>
+      </span>
+      <span id="brand-sub" class="brand-sub"></span>
+    </header>
+
     <!-- Shown only while you are looking at a converted (not live) time -->
     <section id="banner" class="banner" hidden aria-live="polite">
       <div class="banner-text">
@@ -32,9 +42,12 @@
     <p id="empty" class="empty" hidden>No cities yet. Add one below.</p>
 
     <footer class="footer">
-      <button type="button" id="add-city" class="btn">+ Add city</button>
+      <div class="footer-left">
+        <button type="button" id="add-city" class="btn">+ Add city</button>
+        <button type="button" id="select-all" class="btn ghost">Select all</button>
+      </div>
       <div class="footer-right">
-        <button type="button" id="copy" class="btn">Copy times</button>
+        <button type="button" id="copy" class="btn primary">Copy 0 times</button>
         <button type="button" id="toggle-hour" class="btn ghost" aria-label="Switch between 12 and 24 hour time">12h</button>
         <button type="button" id="open-settings" class="btn ghost icon" aria-label="Settings">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
@@ -42,7 +55,7 @@
       </div>
     </footer>
 
-    <p class="hint">Click any time and type to convert — e.g. <kbd>9am</kbd>, <kbd>14:30</kbd>, <kbd>3pm tomorrow</kbd>, <kbd>fri 10am</kbd>. Drag <span aria-hidden="true">⋮⋮</span> to reorder. Hover a row and click ✎ to set your own label and notes.</p>
+    <p class="hint">Click any time and type to convert — e.g. <kbd>9am</kbd>, <kbd>14:30</kbd>, <kbd>3pm tomorrow</kbd>, <kbd>fri 10am</kbd>. Drag <span aria-hidden="true">⋮⋮</span> to reorder. Hover a row and click ✎ to set your own label and notes. Tick rows, then Copy.</p>
   </main>
 
   <!-- Add city -->
@@ -87,11 +100,55 @@
       <h2 id="settings-title">Settings</h2>
 
       <fieldset class="fieldset">
+        <legend>Appearance</legend>
+        <div id="theme-grid" class="theme-grid" aria-label="Theme"></div>
+        <div class="field-label">Customise</div>
+        <div class="pickers">
+          <label><input type="color" id="pick-accent"> Accent</label>
+          <label><input type="color" id="pick-header"> Header</label>
+          <label><input type="color" id="pick-page"> Page</label>
+          <label><input type="color" id="pick-card"> Card</label>
+        </div>
+        <button type="button" id="reset-colours" class="btn ghost small-btn">Reset colours to theme</button>
+        <label for="subtitle" class="field-label">Header subtitle</label>
+        <input id="subtitle" type="text" maxlength="60" autocomplete="off">
+      </fieldset>
+
+      <fieldset class="fieldset">
         <legend>Working hours (shaded on each bar)</legend>
         <div class="row-fields">
           <label>From <select id="work-start"></select></label>
           <label>To <select id="work-end"></select></label>
         </div>
+      </fieldset>
+
+      <fieldset class="fieldset">
+        <legend>Copy format</legend>
+        <label for="meeting-link" class="field-label">My meeting link</label>
+        <input id="meeting-link" type="url" autocomplete="off" placeholder="https://…">
+
+        <label for="copy-each" class="field-label">Each time</label>
+        <input id="copy-each" type="text" autocomplete="off" spellcheck="false">
+        <label for="copy-join" class="field-label">Join times with</label>
+        <input id="copy-join" type="text" autocomplete="off" spellcheck="false" class="short">
+        <label for="copy-message" class="field-label">Message ({times} is the list above)</label>
+        <textarea id="copy-message" rows="3" spellcheck="false"></textarea>
+
+        <div class="tokens" aria-label="Insert a token">
+          <button type="button" class="token" data-token="{abbr}" title="NZDT">{abbr}</button>
+          <button type="button" class="token" data-token="{city}" title="Denver">{city}</button>
+          <button type="button" class="token" data-token="{weekday}" title="Mon">{weekday}</button>
+          <button type="button" class="token" data-token="{day}" title="26">{day}</button>
+          <button type="button" class="token" data-token="{dayth}" title="26th">{dayth}</button>
+          <button type="button" class="token" data-token="{month}" title="Oct">{month}</button>
+          <button type="button" class="token" data-token="{time}" title="4pm">{time}</button>
+          <button type="button" class="token" data-token="{time24}" title="16:00">{time24}</button>
+          <button type="button" class="token" data-token="{times}" title="Message only">{times}</button>
+          <button type="button" class="token" data-token="{meetingLink}" title="Message only">{meetingLink}</button>
+        </div>
+        <div class="field-label">Preview</div>
+        <div id="copy-preview" class="preview"></div>
+        <button type="button" id="copy-reset" class="btn ghost small-btn">Reset copy format</button>
       </fieldset>
 
       <fieldset class="fieldset">
@@ -115,6 +172,7 @@
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
   <script src="tz.js"></script>
+  <script src="themes.js"></script>
   <script src="cities.js"></script>
   <script src="app.js"></script>
 </body>

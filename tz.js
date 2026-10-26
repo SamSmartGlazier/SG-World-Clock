@@ -69,6 +69,8 @@
       if (p && !/^(GMT|UTC)[+-]/.test(p.value)) { best = p.value; break; }
       if (!best && p) best = p.value;
     }
+    // Some Windows builds call UK winter time "GMT+0"; tidy that up.
+    if (/^(GMT|UTC)[+-]0(:00)?$/.test(best)) best = 'GMT';
     return (abbrCache[key] = best);
   }
 

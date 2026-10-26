@@ -6,5 +6,5 @@
     { "tz": "America/Chicago", "label": "Chicago" },
     { "tz": "America/New_York", "label": "New York" }
   ],
-  "settings": { "hour12": true, "workStart": 8, "workEnd": 18 }
+  "settings": { "hour12": true, "workStart": 8, "workEnd": 18, "theme": "sg-app", "subtitle": "Smart Glazier · Sales" }
 }
