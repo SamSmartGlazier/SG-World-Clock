@@ -11,7 +11,7 @@
 (function () {
   'use strict';
 
-  const APP_VERSION = '1.0.0';
+  const APP_VERSION = '1.1.0';
   const STORAGE_KEY = 'worldclock.v1';
 
   // Used if team-defaults.json can't be loaded (e.g. opening the file directly).
@@ -37,7 +37,13 @@
   function normalise(raw) {
     const zones = (Array.isArray(raw && raw.zones) ? raw.zones : [])
       .filter((z) => z && typeof z.tz === 'string' && isValidZone(z.tz))
-      .map((z) => ({ id: typeof z.id === 'string' ? z.id : newId(), tz: z.tz, label: String(z.label || labelFromZone(z.tz)).slice(0, 60) }));
+      .map((z) => ({
+        id: typeof z.id === 'string' ? z.id : newId(),
+        tz: z.tz,
+        label: String(z.label || labelFromZone(z.tz)).slice(0, 60),          // your name for the row
+        city: String(z.city || z.label || labelFromZone(z.tz)).slice(0, 60),  // the place it was added as
+        notes: typeof z.notes === 'string' ? z.notes.slice(0, 2000) : ''      // shown in the ⓘ hover card
+      }));
     let homeId = raw && typeof raw.homeId === 'string' && zones.some((z) => z.id === raw.homeId) ? raw.homeId : null;
     if (!homeId && zones.length) {
       // Defaults files mark home with "home": true instead of an id.
@@ -115,6 +121,8 @@
   /* ---------- Building the rows ---------- */
 
   const ICON_HOME = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg>';
+  const ICON_EDIT = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg>';
+  const ICON_INFO = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.5v.5"/></svg>';
   const ICON_REMOVE = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
 
   function buildList() {
@@ -136,8 +144,16 @@
     handle.title = 'Drag to reorder';
 
     const name = el('span', 'zone-name', z.label);
-    name.title = 'Double-click to rename';
+    name.title = 'Double-click to edit';
     const title = el('div', 'zone-title'); title.append(name);
+    if (z.notes.trim()) {
+      const info = el('button', 'info-btn'); info.type = 'button';
+      info.innerHTML = ICON_INFO;
+      info.setAttribute('aria-label', 'Notes for ' + z.label);
+      info.setAttribute('aria-describedby', 'info-card');
+      wireInfo(info, z);
+      title.append(info);
+    }
     if (z.id === data.homeId) title.append(el('span', 'home-badge', 'HOME'));
 
     const names = el('div', 'zone-names');
@@ -154,6 +170,11 @@
     const main = el('div', 'zone-main'); main.append(top, bar);
 
     const actions = el('div', 'row-actions');
+    const editBtn = el('button'); editBtn.type = 'button';
+    editBtn.innerHTML = ICON_EDIT; editBtn.title = 'Edit label and notes';
+    editBtn.setAttribute('aria-label', 'Edit ' + z.label);
+    editBtn.addEventListener('click', () => openEditor(z.id));
+    actions.append(editBtn);
     if (z.id !== data.homeId) {
       const homeBtn = el('button'); homeBtn.type = 'button';
       homeBtn.innerHTML = ICON_HOME; homeBtn.title = 'Make home';
@@ -170,7 +191,7 @@
     li.append(handle, main, actions);
 
     timeBtn.addEventListener('click', () => startEditing(z.id));
-    name.addEventListener('dblclick', () => renameZone(z.id));
+    name.addEventListener('dblclick', () => openEditor(z.id));
     wireDrag(li, handle);
     handle.addEventListener('keydown', (e) => {
       if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
@@ -219,7 +240,8 @@
       const abbr = TZ.abbreviation(ms, z.tz);
       const meta = li.querySelector('.zone-meta');
       meta.textContent = '';
-      let text = abbr;
+      // With a custom label ("Dave & Stefan"), still show which place it is.
+      let text = (z.label.toLowerCase() !== z.city.toLowerCase() ? z.city + ' · ' : '') + abbr;
       let change = null;
       if (z.id === home.id) {
         text += ' · home';
@@ -331,6 +353,7 @@
 
   /* ---------- Copy ---------- */
 
+  // Uses the place name, not your label, so it's safe to paste to clients.
   // e.g. "Tue 27 Oct: 9:00am CDT Chicago · 10:00am EDT New York · 3:00am NZDT Auckland (Wed 28 Oct)"
   function summaryLine() {
     const ms = shownMs();
@@ -338,7 +361,7 @@
     const firstDate = TZ.formatDate(ms, data.zones[0].tz);
     const parts = data.zones.map((z) => {
       const d = TZ.formatDate(ms, z.tz);
-      return TZ.formatTime(ms, z.tz, data.settings.hour12) + ' ' + TZ.abbreviation(ms, z.tz) + ' ' + z.label + (d !== firstDate ? ' (' + d + ')' : '');
+      return TZ.formatTime(ms, z.tz, data.settings.hour12) + ' ' + TZ.abbreviation(ms, z.tz) + ' ' + z.city + (d !== firstDate ? ' (' + d + ')' : '');
     });
     return firstDate + ': ' + parts.join(' · ');
   }
@@ -357,7 +380,7 @@
 
   function addZone(tz, label) {
     if (data.zones.some((z) => z.tz === tz && z.label === label)) { toast(label + ' is already in your list'); return; }
-    const z = { id: newId(), tz, label };
+    const z = { id: newId(), tz, label, city: label, notes: '' };
     data.zones.push(z);
     if (!data.homeId) data.homeId = z.id;
     save(); buildList();
@@ -374,11 +397,62 @@
     toast('Removed ' + gone.label);
   }
 
-  function renameZone(id) {
+  /* ---------- Edit label & notes ---------- */
+
+  let editorId = null;
+  function openEditor(id) {
     const z = data.zones.find((x) => x.id === id);
     if (!z) return;
-    const name = prompt('Name for this clock', z.label);
-    if (name && name.trim()) { z.label = name.trim().slice(0, 60); save(); buildList(); }
+    editorId = id;
+    $('edit-label').value = z.label;
+    $('edit-notes').value = z.notes;
+    $('edit-zone').textContent = 'Time zone: ' + z.city + ' (' + z.tz.replace(/_/g, ' ') + ')';
+    $('edit-dialog').showModal();
+    $('edit-label').select();
+  }
+
+  function saveEditor() {
+    const z = data.zones.find((x) => x.id === editorId);
+    if (!z) return;
+    z.label = ($('edit-label').value.trim() || z.city).slice(0, 60);
+    z.notes = $('edit-notes').value.replace(/\s+$/, '').slice(0, 2000);
+    save(); buildList();
+    $('edit-dialog').close();
+  }
+
+  /* ---------- ⓘ hover card ---------- */
+
+  // One shared card, moved next to whichever ⓘ you're on. It flips above
+  // the icon when there isn't room below (e.g. on the last row).
+  let hideTimer = null;
+  function showInfo(btn, z) {
+    clearTimeout(hideTimer);
+    const card = $('info-card');
+    $('info-title').textContent = z.label;
+    $('info-notes').textContent = z.notes;
+    $('info-zone').textContent = z.city + ' · ' + z.tz.replace(/_/g, ' ');
+    card.hidden = false;
+    const r = btn.getBoundingClientRect();
+    const w = card.offsetWidth, h = card.offsetHeight;
+    const left = Math.max(8, Math.min(r.left - 12, window.innerWidth - w - 8));
+    const below = r.bottom + 6;
+    const top = below + h > window.innerHeight - 8 ? Math.max(8, r.top - h - 6) : below;
+    card.style.left = left + 'px';
+    card.style.top = top + 'px';
+  }
+  function hideInfo(now) {
+    clearTimeout(hideTimer);
+    if (now) { $('info-card').hidden = true; return; }
+    hideTimer = setTimeout(() => { $('info-card').hidden = true; }, 120);
+  }
+  function wireInfo(btn, z) {
+    btn.addEventListener('mouseenter', () => showInfo(btn, z));
+    btn.addEventListener('mouseleave', () => hideInfo());
+    btn.addEventListener('focus', () => showInfo(btn, z));
+    btn.addEventListener('blur', () => hideInfo(true));
+    // Click toggles it too, for touchscreens.
+    btn.addEventListener('click', (e) => { e.stopPropagation(); if ($('info-card').hidden) showInfo(btn, z); else hideInfo(true); });
+    btn.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideInfo(true); });
   }
 
   function moveZone(id, delta) {
@@ -542,6 +616,12 @@
       const i = btns.indexOf(document.activeElement) + (e.key === 'ArrowDown' ? 1 : -1);
       if (i < 0) $('city-search').focus(); else if (btns[i]) btns[i].focus();
     });
+
+    $('edit-form').addEventListener('submit', (e) => { e.preventDefault(); saveEditor(); });
+    $('edit-cancel').addEventListener('click', () => $('edit-dialog').close());
+    $('edit-notes').addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveEditor(); } });
+    document.addEventListener('click', () => hideInfo(true));
+    window.addEventListener('scroll', () => hideInfo(true), true);
 
     $('open-settings').addEventListener('click', () => { fillHourSelects(); $('settings-dialog').showModal(); });
     $('work-start').addEventListener('change', (e) => { data.settings.workStart = +e.target.value; save(); refresh(); });

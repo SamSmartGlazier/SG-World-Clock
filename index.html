@@ -42,7 +42,7 @@
       </div>
     </footer>
 
-    <p class="hint">Click any time and type to convert — e.g. <kbd>9am</kbd>, <kbd>14:30</kbd>, <kbd>3pm tomorrow</kbd>, <kbd>fri 10am</kbd>. Drag <span aria-hidden="true">⋮⋮</span> to reorder. Double-click a name to rename.</p>
+    <p class="hint">Click any time and type to convert — e.g. <kbd>9am</kbd>, <kbd>14:30</kbd>, <kbd>3pm tomorrow</kbd>, <kbd>fri 10am</kbd>. Drag <span aria-hidden="true">⋮⋮</span> to reorder. Hover a row and click ✎ to set your own label and notes.</p>
   </main>
 
   <!-- Add city -->
@@ -57,6 +57,29 @@
       </div>
     </form>
   </dialog>
+
+  <!-- Edit label & notes -->
+  <dialog id="edit-dialog" class="dialog" aria-labelledby="edit-title">
+    <form id="edit-form" class="dialog-body">
+      <h2 id="edit-title">Edit clock</h2>
+      <label for="edit-label" class="field-label">Label</label>
+      <input id="edit-label" type="text" maxlength="60" autocomplete="off" placeholder="e.g. Central · Dave & Stefan">
+      <label for="edit-notes" class="field-label">Notes (shown when you hover ⓘ)</label>
+      <textarea id="edit-notes" rows="6" maxlength="2000" placeholder="e.g.&#10;Team: Dave, Stefan&#10;Also covers: Dallas, Houston, Winnipeg&#10;Clients: Acme Glass"></textarea>
+      <p class="small muted" id="edit-zone"></p>
+      <div class="dialog-actions">
+        <button type="button" id="edit-cancel" class="btn">Cancel</button>
+        <button type="submit" class="btn primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Notes card, filled and positioned by app.js -->
+  <div id="info-card" class="info-card" role="tooltip" hidden>
+    <div id="info-title" class="info-title"></div>
+    <div id="info-notes" class="info-notes"></div>
+    <div id="info-zone" class="info-zone"></div>
+  </div>
 
   <!-- Settings -->
   <dialog id="settings-dialog" class="dialog" aria-labelledby="settings-title">

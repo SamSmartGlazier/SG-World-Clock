@@ -29,10 +29,11 @@ Chrome works the same way: **⋮ menu → Cast, save and share → Install page 
 | **Enter** / **Esc** | Keep the converted time / cancel |
 | **±1 day** in the blue bar | Shift the converted time a day |
 | **Back to now** | Return to the live clock |
-| **Copy times** | One line for emails and invites, e.g. `Tue 27 Oct: 3:00am NZDT Auckland · 9:00am CDT Chicago (Mon 26 Oct)` |
+| **Copy times** | One line for emails and invites (uses place names, never your labels), e.g. `Tue 27 Oct: 3:00am NZDT Auckland · 9:00am CDT Chicago (Mon 26 Oct)` |
 | Drag ⋮⋮, or focus it and press ↑/↓ | Reorder |
 | Hover a row → house / × | Make it home / remove it |
-| Double-click a name | Rename it, e.g. "Dallas — Acme Glass" |
+| Hover a row → ✎ (or double-click the name) | Set your own label and notes |
+| Hover or click ⓘ | See that row's notes (only shown once a row has notes) |
 | ⚙ | Working hours, export/import backup, reset |
 
 Reading a row: the **orange date** means a different day from home. The **orange note** (e.g. `19h from 1 Nov`) means daylight saving is about to change the gap. The **bar** shows the day, with working hours shaded. The marker turns orange outside working hours.
