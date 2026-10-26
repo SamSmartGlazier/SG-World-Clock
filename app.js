@@ -11,7 +11,7 @@
 (function () {
   'use strict';
 
-  const APP_VERSION = '1.3.0';
+  const APP_VERSION = '1.4.0';
   const STORAGE_KEY = 'worldclock.v1';
 
   // Used if team-defaults.json can't be loaded (e.g. opening the file directly).
@@ -43,7 +43,9 @@
         label: String(z.label || labelFromZone(z.tz)).slice(0, 60),          // your name for the row
         city: String(z.city || z.label || labelFromZone(z.tz)).slice(0, 60),  // the place it was added as
         notes: typeof z.notes === 'string' ? z.notes.slice(0, 2000) : '',     // shown in the ⓘ hover card
-        selected: z.selected === true                                       // ticked for copying
+        selected: z.selected === true,                                      // ticked for copying
+        // Compact view line. Missing = suggest one; '' = deliberately no group.
+        group: typeof z.group === 'string' ? z.group.trim().slice(0, 40) : TZ.suggestGroup(z.tz)
       }));
     let homeId = raw && typeof raw.homeId === 'string' && zones.some((z) => z.id === raw.homeId) ? raw.homeId : null;
     if (!homeId && zones.length) {
@@ -66,6 +68,8 @@
         copyEach: typeof s.copyEach === 'string' ? s.copyEach.slice(0, 300) : DEFAULT_COPY.copyEach,
         copyJoin: typeof s.copyJoin === 'string' ? s.copyJoin.slice(0, 20) : DEFAULT_COPY.copyJoin,
         copyMessage: typeof s.copyMessage === 'string' ? s.copyMessage.slice(0, 2000) : DEFAULT_COPY.copyMessage,
+        copyGroup: typeof s.copyGroup === 'string' ? s.copyGroup.slice(0, 300) : DEFAULT_COPY.copyGroup,
+        view: s.view === 'compact' ? 'compact' : 'list',
         meetingLink: typeof s.meetingLink === 'string' ? s.meetingLink.trim().slice(0, 500) : '',
         // Appearance
         theme: (window.THEMES || []).some((t) => t.id === s.theme) ? s.theme : 'classic',
@@ -150,6 +154,7 @@
     list.textContent = '';
     for (const z of data.zones) list.appendChild(buildRow(z));
     $('empty').hidden = data.zones.length > 0;
+    compactSignature = '';
     updateCopyControls();
     refresh();
   }
@@ -244,6 +249,7 @@
 
   function refresh() {
     if (!data.zones.length) { updateBanner(); return; }
+    if (data.settings.view === 'compact') { refreshCompact(); return; }
     const ms = shownMs();
     const home = homeZone();
     const { workStart, workEnd, hour12 } = data.settings;
@@ -304,6 +310,120 @@
     updateBanner();
   }
 
+  /* ---------- Compact view ---------- */
+
+  /*
+    Turns the clock list into lines: Home first, then one line per group
+    (in the order groups first appear in List view), then a line for each
+    clock with no group. Clocks in the same group that show the same zone
+    name and offset (Dallas + Chicago = CDT) collapse into one item.
+  */
+  function compactModel(ms) {
+    const home = homeZone();
+    const lines = [];
+    if (home) lines.push({ key: 'home', name: 'Home', zones: [home] });
+    const byKey = {};
+    for (const z of data.zones) {
+      if (z === home) continue;
+      const key = z.group ? 'g:' + z.group.toLowerCase() : 'z:' + z.id;
+      if (!byKey[key]) { byKey[key] = { key, name: z.group || z.city, zones: [] }; lines.push(byKey[key]); }
+      byKey[key].zones.push(z);
+    }
+    for (const line of lines) {
+      const seen = {};
+      line.items = [];
+      for (const z of line.zones) {
+        const abbr = TZ.abbreviation(ms, z.tz);
+        const k = abbr + '|' + TZ.offsetMinutes(ms, z.tz);
+        if (seen[k]) { seen[k].zones.push(z); continue; }
+        seen[k] = { key: k, abbr, zone: z, zones: [z] };
+        line.items.push(seen[k]);
+      }
+    }
+    return { lines, signature: lines.map((l) => l.key + '=' + l.items.map((i) => i.key).join(',')).join(';') };
+  }
+
+  let compactSignature = '';
+  function buildCompact(model) {
+    const list = $('groups');
+    list.textContent = '';
+    for (const line of model.lines) {
+      const li = el('li', 'grp'); li.dataset.key = line.key;
+      const head = el('div', 'grp-head');
+      const pick = document.createElement('input');
+      pick.type = 'checkbox'; pick.className = 'pick';
+      pick.setAttribute('aria-label', 'Include ' + line.name + ' when copying');
+      pick.addEventListener('change', () => {
+        line.zones.forEach((z) => { z.selected = pick.checked; });
+        save(); updateCopyControls(); refresh();
+      });
+      head.append(pick, el('span', 'grp-name', line.name), el('span', 'grp-date'));
+      const row = el('div', 'grp-line');
+      for (const it of line.items) {
+        const pair = el('div', 'pair'); pair.dataset.item = it.key;
+        const t = el('button', 'pair-time'); t.type = 'button';
+        const names = it.zones.map((z) => z.city).join(', ');
+        t.title = names;
+        t.addEventListener('click', () => startEditing(it.zone.id, pair));
+        pair.append(el('span', 'pair-abbr', it.abbr), t, el('span', 'pair-day'));
+        row.append(pair);
+      }
+      li.append(head, row);
+      list.append(li);
+    }
+    compactSignature = model.signature;
+  }
+
+  function refreshCompact() {
+    const ms = shownMs();
+    const model = compactModel(ms);
+    // Rebuild only when the shape changes (cities added, a clock change
+    // renames PDT -> PST) and never while you're typing in it.
+    if (model.signature !== compactSignature && !view.editingId) buildCompact(model);
+    const home = homeZone();
+    const lo = Math.min(data.settings.workStart, data.settings.workEnd), hi = Math.max(data.settings.workStart, data.settings.workEnd);
+    for (const line of model.lines) {
+      const li = document.querySelector('.grp[data-key="' + CSS.escape(line.key) + '"]');
+      if (!li) continue;
+      li.querySelector('.pick').checked = line.zones.some((z) => z.selected);
+      const firstTz = line.items[0].zone.tz;
+      const date = TZ.formatDate(ms, firstTz);
+      const diff = home ? TZ.dayDifference(ms, firstTz, home.tz) : 0;
+      const dateEl = li.querySelector('.grp-date');
+      dateEl.textContent = date;
+      if (diff) dateEl.append(' · ', el('span', 'day-tag', (diff > 0 ? '+' : '−') + Math.abs(diff) + ' day'));
+      for (const it of line.items) {
+        const pair = li.querySelector('.pair[data-item="' + CSS.escape(it.key) + '"]');
+        if (!pair) continue;
+        const h = TZ.decimalHour(ms, it.zone.tz);
+        pair.classList.toggle('off', h < lo || h >= hi);
+        const d = TZ.formatDate(ms, it.zone.tz);
+        pair.querySelector('.pair-day').textContent = d !== date ? '(' + d.split(' ')[0] + ')' : '';
+        if (view.editingId && pair.classList.contains('editing')) continue;
+        const btn = pair.querySelector('.pair-time');
+        if (btn) {
+          btn.textContent = compactTime(ms, it.zone.tz);   // "8am", "3:02pm": shorter, so lines fit
+          btn.setAttribute('aria-label', it.abbr + ' ' + btn.textContent + ' (' + btn.title + '). Click to type a time');
+        }
+      }
+    }
+    updateBanner();
+  }
+
+  function setView(mode) {
+    if (view.editingId) stopEditing(true);
+    data.settings.view = mode; save();
+    const compact = mode === 'compact';
+    $('zones').hidden = compact;
+    $('groups').hidden = !compact;
+    $('hint-list').hidden = compact;
+    $('hint-compact').hidden = !compact;
+    document.querySelectorAll('.view-toggle button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.view === mode)));
+    compactSignature = '';
+    updateCopyControls();
+    refresh();
+  }
+
   function updateBanner() {
     const banner = $('banner');
     banner.hidden = view.refMs === null;
@@ -316,24 +436,28 @@
 
   /* ---------- Typing a time ---------- */
 
-  function startEditing(id) {
+  // `holder` is the compact-view item being edited; in List view it's the row.
+  function startEditing(id, holder) {
     if (view.editingId) stopEditing(true);
-    const li = document.querySelector('.zone[data-id="' + id + '"]');
+    const li = holder || document.querySelector('.zone[data-id="' + id + '"]');
     const z = data.zones.find((x) => x.id === id);
     if (!li || !z) return;
 
     view.editingId = id;
+    view.editHolder = li;
     view.editBaseMs = shownMs();
     view.editPrevRef = view.refMs;
     li.classList.add('editing');
 
-    const btn = li.querySelector('.time-btn');
+    const btn = li.querySelector('.time-btn, .pair-time');
     const input = document.createElement('input');
     input.className = 'time-input';
     input.type = 'text';
     input.value = btn.textContent;
-    input.setAttribute('aria-label', 'Type a time in ' + z.label);
+    input.setAttribute('aria-label', 'Type a time in ' + (holder ? z.city : z.label));
+    if (holder) input.size = Math.max(5, btn.textContent.length);
     input.spellcheck = false;
+    input.dataset.title = btn.title || '';
     btn.replaceWith(input);
     input.focus();
     input.select();
@@ -353,14 +477,17 @@
   function stopEditing(keep) {
     const id = view.editingId;
     if (!id) return;
-    const li = document.querySelector('.zone[data-id="' + id + '"]');
+    const li = view.editHolder;
+    const compactItem = li && li.classList.contains('pair');
     const input = li && li.querySelector('.time-input');
     if (!keep || (input && !TZ.parseTimeInput(input.value))) view.refMs = view.editPrevRef;
     view.editingId = null;
+    view.editHolder = null;
     if (li) {
       li.classList.remove('editing');
-      const btn = el('button', 'time-btn'); btn.type = 'button';
-      btn.addEventListener('click', () => startEditing(id));
+      const btn = el('button', compactItem ? 'pair-time' : 'time-btn'); btn.type = 'button';
+      btn.title = input ? (input.dataset.title || '') : '';
+      btn.addEventListener('click', () => startEditing(id, compactItem ? li : undefined));
       if (input) input.replaceWith(btn);
     }
     refresh();
@@ -391,7 +518,12 @@
     Only place names are offered as tokens, never your labels, so internal
     notes can't end up in a client email.
   */
-  const DEFAULT_COPY = { copyEach: '{abbr} {weekday} {dayth} {time}', copyJoin: ' / ', copyMessage: '{times}' };
+  const DEFAULT_COPY = {
+    copyEach: '{abbr} {weekday} {dayth} {time}',
+    copyJoin: ' / ',
+    copyMessage: '{times}',
+    copyGroup: '{group}: {list} ({weekday} {dayth})'   // Compact view: one per group
+  };
 
   function ordinal(n) {
     const t = n % 100;
@@ -432,10 +564,35 @@
     return fillTokens(s.copyMessage, { times, meetingLink: s.meetingLink }).trim();
   }
 
+  /*
+    Compact view copies whole lines. A line is included when any clock in
+    it is ticked. One distinct time -> "Each time" format; several ->
+    "Each group" format, where {list} is e.g. "PDT 3pm · MDT 4pm".
+  */
+  function compactLineText(line, ms) {
+    const s = data.settings;
+    if (line.items.length === 1) return fillTokens(s.copyEach, tokensFor(ms, line.items[0].zone));
+    const first = tokensFor(ms, line.items[0].zone);
+    const list = line.items.map((it) => {
+      const t = tokensFor(ms, it.zone);
+      return t.abbr + ' ' + t.time + (t.weekday !== first.weekday ? ' (' + t.weekday + ')' : '');
+    }).join(' · ');
+    return fillTokens(s.copyGroup, Object.assign({}, first, { group: line.name, list }));
+  }
+  function selectedLines() {
+    return compactModel(shownMs()).lines.filter((l) => l.zones.some((z) => z.selected));
+  }
+  function buildCompactCopyText(lines, ms) {
+    const s = data.settings;
+    const times = lines.map((l) => compactLineText(l, ms)).join(s.copyJoin);
+    return fillTokens(s.copyMessage, { times, meetingLink: s.meetingLink }).trim();
+  }
+
   async function copySelected() {
+    const compact = data.settings.view === 'compact';
     const zones = selectedZones();
     if (!zones.length) { toast('Tick the times you want to copy first'); return; }
-    const text = buildCopyText(zones, shownMs());
+    const text = compact ? buildCompactCopyText(selectedLines(), shownMs()) : buildCopyText(zones, shownMs());
     try { await navigator.clipboard.writeText(text); }
     catch (e) {
       const ta = document.createElement('textarea'); ta.value = text; document.body.append(ta);
@@ -448,7 +605,12 @@
   function updateCopyControls() {
     const n = selectedZones().length;
     const btn = $('copy');
-    btn.textContent = n === 1 ? 'Copy 1 time' : 'Copy ' + n + ' times';
+    if (data.settings.view === 'compact') {
+      const lines = n ? selectedLines().length : 0;
+      btn.textContent = lines === 1 ? 'Copy 1 line' : 'Copy ' + lines + ' lines';
+    } else {
+      btn.textContent = n === 1 ? 'Copy 1 time' : 'Copy ' + n + ' times';
+    }
     btn.setAttribute('aria-disabled', n ? 'false' : 'true');
     btn.title = n ? '' : 'Tick the rows you want to copy';
     const all = data.zones.length > 0 && n === data.zones.length;
@@ -456,8 +618,12 @@
   }
 
   function updateCopyPreview() {
+    if (!data.zones.length) { $('copy-preview').textContent = '(add a city to see a preview)'; return; }
+    const ms = shownMs();
     const zones = selectedZones().length ? selectedZones() : data.zones.slice(0, 2);
-    $('copy-preview').textContent = zones.length ? buildCopyText(zones, shownMs()) : '(add a city to see a preview)';
+    let lines = selectedLines();
+    if (!lines.length) lines = compactModel(ms).lines.slice(0, 2);
+    $('copy-preview').textContent = 'List view:\n' + buildCopyText(zones, ms) + '\n\nCompact view:\n' + buildCompactCopyText(lines, ms);
   }
 
   /* ---------- Appearance (themes + colour pickers) ---------- */
@@ -565,7 +731,7 @@
 
   function addZone(tz, label) {
     if (data.zones.some((z) => z.tz === tz && z.label === label)) { toast(label + ' is already in your list'); return; }
-    const z = { id: newId(), tz, label, city: label, notes: '' };
+    const z = { id: newId(), tz, label, city: label, notes: '', selected: false, group: TZ.suggestGroup(tz) };
     data.zones.push(z);
     if (!data.homeId) data.homeId = z.id;
     save(); buildList();
@@ -591,6 +757,12 @@
     editorId = id;
     $('edit-label').value = z.label;
     $('edit-notes').value = z.notes;
+    $('edit-group').value = z.group;
+    const groups = [...new Set(data.zones.map((x) => x.group).filter(Boolean).concat(TZ.suggestGroup(z.tz) || []))].sort();
+    $('group-list').textContent = '';
+    groups.forEach((g) => { const o = document.createElement('option'); o.value = g; $('group-list').append(o); });
+    const sug = TZ.suggestGroup(z.tz);
+    $('edit-group-hint').textContent = sug ? 'Suggested: ' + sug : '';
     $('edit-zone').textContent = 'Time zone: ' + z.city + ' (' + z.tz.replace(/_/g, ' ') + ')';
     $('edit-dialog').showModal();
     $('edit-label').select();
@@ -601,6 +773,8 @@
     if (!z) return;
     z.label = ($('edit-label').value.trim() || z.city).slice(0, 60);
     z.notes = $('edit-notes').value.replace(/\s+$/, '').slice(0, 2000);
+    z.group = $('edit-group').value.trim().slice(0, 40);
+    compactSignature = '';
     save(); buildList();
     $('edit-dialog').close();
   }
@@ -757,7 +931,7 @@
       const incoming = normalise(JSON.parse(await file.text()));
       if (!incoming.zones.length) throw new Error('no zones');
       if (!confirm('Replace your current ' + data.zones.length + ' cities with ' + incoming.zones.length + ' from this file?')) return;
-      data = incoming; save(); applyTheme(); buildThemeGrid(); fillPickers(); fillHourSelects(); updateHourToggle(); buildList();
+      data = incoming; save(); applyTheme(); setView(data.settings.view); buildThemeGrid(); fillPickers(); fillHourSelects(); updateHourToggle(); buildList();
       toast('Imported ' + incoming.zones.length + ' cities');
     } catch (e) { toast('That file isn’t a World Clock backup'); }
   }
@@ -765,6 +939,7 @@
   function fillCopyFields() {
     $('copy-each').value = data.settings.copyEach;
     $('copy-join').value = data.settings.copyJoin;
+    $('copy-group').value = data.settings.copyGroup;
     $('copy-message').value = data.settings.copyMessage;
     $('meeting-link').value = data.settings.meetingLink;
   }
@@ -792,6 +967,8 @@
     updateHourToggle();
     buildList();
     $('version').textContent = 'World Clock ' + APP_VERSION;
+    document.querySelectorAll('.view-toggle button').forEach((b) => b.addEventListener('click', () => setView(b.dataset.view)));
+    setView(data.settings.view);
 
     $('back-to-now').addEventListener('click', backToNow);
     $('day-back').addEventListener('click', () => shiftDay(-1));
@@ -803,7 +980,7 @@
       save(); buildList();
     });
     // Copy-format fields save as you type and update the preview.
-    for (const [id, key] of [['copy-each', 'copyEach'], ['copy-join', 'copyJoin'], ['copy-message', 'copyMessage'], ['meeting-link', 'meetingLink']]) {
+    for (const [id, key] of [['copy-each', 'copyEach'], ['copy-join', 'copyJoin'], ['copy-group', 'copyGroup'], ['copy-message', 'copyMessage'], ['meeting-link', 'meetingLink']]) {
       $(id).addEventListener('input', (e) => { data.settings[key] = key === 'meetingLink' ? e.target.value.trim() : e.target.value; save(); updateCopyPreview(); });
     }
     $('copy-reset').addEventListener('click', () => {
@@ -837,7 +1014,7 @@
     $('edit-cancel').addEventListener('click', () => $('edit-dialog').close());
     $('edit-notes').addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveEditor(); } });
     document.addEventListener('click', () => hideInfo(true));
-    ['copy-each', 'copy-message'].forEach((id) => $(id).addEventListener('focus', () => { lastCopyField = id; }));
+    ['copy-each', 'copy-group', 'copy-message'].forEach((id) => $(id).addEventListener('focus', () => { lastCopyField = id; }));
     window.addEventListener('scroll', () => hideInfo(true), true);
 
     $('open-settings').addEventListener('click', () => { fillHourSelects(); fillCopyFields(); updateCopyPreview(); buildThemeGrid(); fillPickers(); $('settings-dialog').showModal(); });
@@ -857,7 +1034,7 @@
     $('import-file').addEventListener('change', (e) => { if (e.target.files[0]) importData(e.target.files[0]); e.target.value = ''; });
     $('reset').addEventListener('click', async () => {
       if (!confirm('Replace your list and settings with the team defaults?')) return;
-      data = await loadTeamDefaults(); save(); applyTheme(); buildThemeGrid(); fillPickers(); fillHourSelects(); updateHourToggle(); backToNow(); buildList();
+      data = await loadTeamDefaults(); save(); applyTheme(); setView(data.settings.view); buildThemeGrid(); fillPickers(); fillHourSelects(); updateHourToggle(); backToNow(); buildList();
       toast('Reset to team defaults');
     });
 

@@ -18,9 +18,15 @@
         <span class="brand-mark" aria-hidden="true">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
         </span>
-        <span class="brand-name">World Clock</span>
+        <span class="brand-text">
+          <span class="brand-name">World Clock</span>
+          <span id="brand-sub" class="brand-sub"></span>
+        </span>
       </span>
-      <span id="brand-sub" class="brand-sub"></span>
+      <div class="view-toggle" role="group" aria-label="View">
+        <button type="button" data-view="list" aria-pressed="true">List</button>
+        <button type="button" data-view="compact" aria-pressed="false">Compact</button>
+      </div>
     </header>
 
     <!-- Shown only while you are looking at a converted (not live) time -->
@@ -38,6 +44,8 @@
 
     <!-- The list of clocks. Rows are created by app.js -->
     <ol id="zones" class="zones" aria-label="Time zones"></ol>
+    <!-- Compact view: one line per group. Built by app.js -->
+    <ol id="groups" class="groups" aria-label="Time zones by group" hidden></ol>
 
     <p id="empty" class="empty" hidden>No cities yet. Add one below.</p>
 
@@ -55,7 +63,8 @@
       </div>
     </footer>
 
-    <p class="hint">Click any time and type to convert — e.g. <kbd>9am</kbd>, <kbd>14:30</kbd>, <kbd>3pm tomorrow</kbd>, <kbd>fri 10am</kbd>. Drag <span aria-hidden="true">⋮⋮</span> to reorder. Hover a row and click ✎ to set your own label and notes. Tick rows, then Copy.</p>
+    <p class="hint" id="hint-compact" hidden>Click a time to type and convert. Greyed times are outside working hours. Tick a line to include it when copying. Set each clock's group with ✎ in List view.</p>
+    <p class="hint" id="hint-list">Click any time and type to convert — e.g. <kbd>9am</kbd>, <kbd>14:30</kbd>, <kbd>3pm tomorrow</kbd>, <kbd>fri 10am</kbd>. Drag <span aria-hidden="true">⋮⋮</span> to reorder. Hover a row and click ✎ to set your own label and notes. Tick rows, then Copy.</p>
   </main>
 
   <!-- Add city -->
@@ -77,6 +86,10 @@
       <h2 id="edit-title">Edit clock</h2>
       <label for="edit-label" class="field-label">Label</label>
       <input id="edit-label" type="text" maxlength="60" autocomplete="off" placeholder="e.g. Central · Dave & Stefan">
+      <label for="edit-group" class="field-label">Group (one line in Compact view)</label>
+      <input id="edit-group" type="text" list="group-list" maxlength="40" autocomplete="off" placeholder="No group: gets its own line">
+      <datalist id="group-list"></datalist>
+      <p class="small muted" id="edit-group-hint"></p>
       <label for="edit-notes" class="field-label">Notes (shown when you hover ⓘ)</label>
       <textarea id="edit-notes" rows="6" maxlength="2000" placeholder="e.g.&#10;Team: Dave, Stefan&#10;Also covers: Dallas, Houston, Winnipeg&#10;Clients: Acme Glass"></textarea>
       <p class="small muted" id="edit-zone"></p>
@@ -129,7 +142,9 @@
 
         <label for="copy-each" class="field-label">Each time</label>
         <input id="copy-each" type="text" autocomplete="off" spellcheck="false">
-        <label for="copy-join" class="field-label">Join times with</label>
+        <label for="copy-group" class="field-label">Each group (Compact view)</label>
+        <input id="copy-group" type="text" autocomplete="off" spellcheck="false">
+        <label for="copy-join" class="field-label">Join with</label>
         <input id="copy-join" type="text" autocomplete="off" spellcheck="false" class="short">
         <label for="copy-message" class="field-label">Message ({times} is the list above)</label>
         <textarea id="copy-message" rows="3" spellcheck="false"></textarea>
@@ -143,6 +158,8 @@
           <button type="button" class="token" data-token="{month}" title="Oct">{month}</button>
           <button type="button" class="token" data-token="{time}" title="4pm">{time}</button>
           <button type="button" class="token" data-token="{time24}" title="16:00">{time24}</button>
+          <button type="button" class="token" data-token="{group}" title="Group only: USA">{group}</button>
+          <button type="button" class="token" data-token="{list}" title="Group only: PDT 3pm · MDT 4pm">{list}</button>
           <button type="button" class="token" data-token="{times}" title="Message only">{times}</button>
           <button type="button" class="token" data-token="{meetingLink}" title="Message only">{meetingLink}</button>
         </div>

@@ -174,7 +174,26 @@
     return w.hour + w.minute / 60;
   }
 
+  /*
+    A starting group for a zone, used by the Compact view. People can
+    change it per clock in ✎ Edit; this only decides the first guess.
+  */
+  const US = /^(America\/(New_York|Detroit|Chicago|Denver|Phoenix|Los_Angeles|Anchorage|Boise|Juneau|Sitka|Nome|Yakutat|Metlakatla|Adak|Menominee|Indiana\/.+|Kentucky\/.+|North_Dakota\/.+)|Pacific\/Honolulu)$/;
+  const CANADA = /^America\/(Toronto|Montreal|Vancouver|Edmonton|Winnipeg|Halifax|St_Johns|Regina|Moncton|Glace_Bay|Goose_Bay|Whitehorse|Dawson|Dawson_Creek|Yellowknife|Iqaluit|Rankin_Inlet|Cambridge_Bay|Inuvik|Swift_Current|Atikokan|Creston|Fort_Nelson|Resolute|Nipigon|Thunder_Bay|Rainy_River|Pangnirtung|Blanc-Sablon)$/;
+  function suggestGroup(tz) {
+    if (US.test(tz)) return 'USA';
+    if (CANADA.test(tz)) return 'Canada';
+    if (/^Europe\//.test(tz) || /^Atlantic\/(Reykjavik|Canary|Faroe|Madeira)$/.test(tz)) return 'Europe & UK';
+    if (/^Australia\//.test(tz)) return 'Australia';
+    if (/^Pacific\/(Auckland|Chatham)$/.test(tz)) return 'New Zealand';
+    if (/^Asia\//.test(tz)) return 'Asia';
+    if (/^America\//.test(tz)) return 'Americas';
+    if (/^Africa\//.test(tz)) return 'Africa';
+    return '';
+  }
+
   global.TZ = {
+    suggestGroup,
     wallParts, offsetMinutes, instantFromWall, abbreviation, formatTime, formatDate,
     dayDifference, describeGap, nextGapChange, parseTimeInput, resolveInput, decimalHour
   };

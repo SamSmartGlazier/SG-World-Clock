@@ -35,6 +35,8 @@ Chrome works the same way: **⋮ menu → Cast, save and share → Install page 
 | Hover a row → house / × | Make it home / remove it |
 | Hover a row → ✎ (or double-click the name) | Set your own label and notes |
 | Hover or click ⓘ | See that row's notes (only shown once a row has notes) |
+| **List / Compact** switch in the header | Compact shows one line per group: `USA  PDT 3:02pm  MDT 4:02pm  CDT 5:02pm  EDT 6:02pm`. Click any time to type and convert |
+| ✎ Edit → **Group** | Choose which Compact line a clock sits on. New cities get a suggested group (USA, Canada, Europe & UK, Australia, Asia…). Clear it for a line of its own |
 | ⚙ → **Appearance** | Pick one of 7 themes, fine-tune with 4 colour pickers, change the header subtitle |
 | ⚙ | Working hours, export/import backup, reset |
 
@@ -53,8 +55,12 @@ Set in ⚙ → **Copy format**. Click a token chip to insert it.
 | `{month}` | Oct | Each time |
 | `{time}` | 4pm, 4:30pm (16:00 in 24h mode) | Each time |
 | `{time24}` | 16:00 | Each time |
-| `{times}` | All ticked times, joined | Message |
+| `{group}` | USA | Each group |
+| `{list}` | PDT 3pm · MDT 4pm · CDT 5pm | Each group |
+| `{times}` | All ticked times (or lines), joined | Message |
 | `{meetingLink}` | Your link from ⚙ | Message |
+
+In Compact view, Copy takes whole lines: a line is included if any clock in it is ticked (tick the box on the line). A line with one time uses **Each time**; a line with several uses **Each group**, e.g. `USA: PDT 3pm · MDT 4pm · CDT 5pm · EDT 6pm (Mon 26th)`.
 
 Example message: `{times}` on one line, then `Join here: {meetingLink}` on the next.
 Your meeting link is saved in this browser only. It's never in the code on GitHub, but it **is** included in Export backups.

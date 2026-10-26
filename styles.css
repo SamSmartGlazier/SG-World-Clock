@@ -100,13 +100,24 @@ body {
   display: inline-flex; align-items: center; justify-content: center;
   background: var(--header-mark); color: #ffffff;
 }
-.brand-sub { font-size: 12px; opacity: .8; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.brand-text { display: flex; flex-direction: column; min-width: 0; }
+.brand-sub { font-size: 11px; font-weight: 400; opacity: .75; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.brand-sub:empty { display: none; }
+.brand-title { min-width: 0; }
+
+/* List | Compact switch */
+.view-toggle { display: inline-flex; flex-shrink: 0; padding: 3px; gap: 2px; border-radius: 999px; background: color-mix(in srgb, var(--header-ink) 12%, transparent); }
+.view-toggle button {
+  font: inherit; font-size: 12px; min-height: 28px; padding: 0 12px; border: 0; border-radius: 999px;
+  background: transparent; color: var(--header-ink); opacity: .8; cursor: pointer;
+}
+.view-toggle button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); opacity: 1; font-weight: 600; }
 /* Smart Glazier website: orange-to-amber headline gradient, pill buttons */
 [data-theme="sg-web"]:not([data-custom]) .brand-name {
   background: linear-gradient(180deg, #f47c20, #f8b420); -webkit-background-clip: text; background-clip: text; color: transparent;
   font-size: 19px; font-weight: 800;
 }
-[data-theme="sg-web"] .brand-sub { color: #868a8a; opacity: 1; }
+[data-theme="sg-web"] .brand-sub { color: #868a8a; opacity: 1; -webkit-text-fill-color: #868a8a; }
 [data-theme^="sg-"] #copy.primary, [data-theme^="sg-"] #back-to-now { border-radius: 999px; }
 [data-theme="sg-app"] .brand-bar { border-bottom: 3px solid var(--accent); }
 
@@ -307,3 +318,25 @@ kbd { font: inherit; font-size: 11px; padding: 0 4px; border: 1px solid var(--li
 .pickers { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; }
 .pickers label { display: flex; align-items: center; gap: 8px; font-size: 13px; }
 .pickers input[type=color] { width: 40px; height: 32px; padding: 0 2px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); cursor: pointer; }
+
+/* Compact view */
+.groups { list-style: none; margin: 0; padding: 0; flex-grow: 1; }
+.groups[hidden], .zones[hidden], .hint[hidden] { display: none; }
+.grp { padding: 12px 16px 14px; border-bottom: 1px solid var(--line); background: var(--row-bg); display: flex; flex-direction: column; gap: 6px; }
+.grp-head { display: flex; align-items: center; gap: 10px; }
+.grp-name { flex-grow: 1; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.grp-date { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.grp-line { display: flex; flex-wrap: wrap; gap: 2px 14px; align-items: baseline; padding-left: 28px; }
+.pair { display: inline-flex; align-items: baseline; gap: 5px; }
+.pair-abbr { font-size: 11px; font-weight: 700; letter-spacing: .02em; color: var(--accent); }
+.pair-time {
+  font: inherit; font-size: 19px; font-weight: 600; font-variant-numeric: tabular-nums;
+  padding: 0 4px; margin: 0 -4px; min-height: 32px; border: 1px solid transparent; border-radius: var(--radius);
+  background: transparent; color: var(--time-ink); cursor: text;
+}
+.pair-time:hover { border-color: var(--line); background: var(--surface); }
+.pair.off .pair-time { color: var(--faint); font-weight: 500; }
+.pair-day { font-size: 11px; color: var(--flag); font-weight: 600; }
+.pair-day:empty { display: none; }
+.pair .time-input { width: auto; font-size: 17px; min-height: 32px; padding: 0 6px; text-align: left; }
+.grp[data-key="home"] .pair-time { font-size: 23px; }
