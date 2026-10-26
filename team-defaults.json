@@ -1,0 +1,10 @@
+{
+  "zones": [
+    { "tz": "Pacific/Auckland", "label": "Auckland", "home": true },
+    { "tz": "America/Los_Angeles", "label": "Los Angeles" },
+    { "tz": "America/Denver", "label": "Denver" },
+    { "tz": "America/Chicago", "label": "Chicago" },
+    { "tz": "America/New_York", "label": "New York" }
+  ],
+  "settings": { "hour12": true, "workStart": 8, "workEnd": 18 }
+}
