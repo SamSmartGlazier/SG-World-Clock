@@ -11,7 +11,7 @@
 (function () {
   'use strict';
 
-  const APP_VERSION = '1.4.0';
+  const APP_VERSION = '1.4.1';
   const STORAGE_KEY = 'worldclock.v1';
 
   // Used if team-defaults.json can't be loaded (e.g. opening the file directly).
